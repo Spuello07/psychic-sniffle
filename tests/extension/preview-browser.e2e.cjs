@@ -71,6 +71,12 @@ async function fixture(t, options = {}) {
     popup.on("pageerror", (error) => state.errors.push(error.message));
     await popup.route("http://localhost:3000/**", async (route) => {
         const request = route.request();
+        // Desde los múltiples perfiles (PR #33) el popup pide la lista al abrirse.
+        // Se responde aparte y no cuenta como petición de previsualizar/aplicar/borrar.
+        if (new URL(request.url()).pathname === "/profile/list") {
+            if (options.offline) return route.abort();
+            return route.fulfill({ json: { profiles: [{ id: 1, name: "Perfil principal" }] } });
+        }
         state.requests.push({ method: request.method(), url: request.url() });
         if (request.url().endsWith("/logs")) {
             state.logs.push({
@@ -97,7 +103,11 @@ async function fixture(t, options = {}) {
     await popup.exposeFunction("testBridge", async (action, data) => {
         if (action === "get") return { ...state.storage };
         if (action === "set") return Object.assign(state.storage, data);
-        if (action === "remove") { delete state.storage.token; return; }
+        // Igual que chrome.storage.local.remove: borra solo las claves pedidas.
+        if (action === "remove") {
+            for (const key of [].concat(data ?? [])) delete state.storage[key];
+            return;
+        }
         if (action === "tabs") return [state.activeTab];
         if (action === "logsCount") return state.logs.length;
         if (action === "message") {
@@ -116,7 +126,7 @@ async function fixture(t, options = {}) {
             storage: { local: {
                 get: () => testBridge("get"),
                 set: (data) => testBridge("set", data),
-                remove: () => testBridge("remove")
+                remove: (keys) => testBridge("remove", keys)
             } },
             tabs: {
                 query: () => testBridge("tabs"),
