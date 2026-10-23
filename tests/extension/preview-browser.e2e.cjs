@@ -23,7 +23,12 @@ before(async () => {
             "/popup/popup.html": ["popup/popup.html", "text/html"],
             "/popup/popup.js": ["popup/popup.js", "text/javascript"]
         };
-        const resource = routes[new URL(req.url, "http://localhost").pathname];
+        const pathname = new URL(req.url, "http://localhost").pathname;
+        // El popup carga sus estilos, fuentes e iconos locales (rediseño de la UI).
+        const assetTypes = { ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" };
+        const popupAsset = /^\/popup\/[\w./-]+$/.test(pathname) && !pathname.includes("..")
+            && assetTypes[path.extname(pathname)];
+        const resource = routes[pathname] || (popupAsset && [pathname.slice(1), popupAsset]);
         if (!resource) return res.writeHead(404).end();
         try {
             const data = await fs.readFile(path.join(extensionDir, resource[0]));
